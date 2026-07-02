@@ -459,6 +459,42 @@ class Worker(WorkerBase):
             logger.info(msg)
             return self._reserve_mm_ipc_gpu_memory(kv_cache_memory_bytes)
 
+        if os.environ.get("VLLM_SKIP_MEMORY_PROFILE_RUN", "0").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            safety_margin_gb = float(
+                os.environ.get("VLLM_SKIP_MEMORY_PROFILE_SAFETY_MARGIN_GB", "6")
+            )
+            weights_memory = int(self.model_runner.model_memory_usage)
+            self.non_torch_memory = 0
+            self.peak_activation_memory = 0
+            self.cudagraph_memory_estimate = 0
+            self.available_kv_cache_memory_bytes = max(
+                0,
+                int(
+                    self.requested_memory
+                    - weights_memory
+                    - safety_margin_gb * GiB_bytes
+                ),
+            )
+            logger.warning(
+                "Skipping vLLM memory profile run because "
+                "VLLM_SKIP_MEMORY_PROFILE_RUN is set. Reserving %s GiB "
+                "for KV cache from requested=%s GiB, weights=%s GiB, "
+                "safety_margin=%.2f GiB. Lower --gpu-memory-utilization "
+                "or increase VLLM_SKIP_MEMORY_PROFILE_SAFETY_MARGIN_GB if "
+                "the first real request OOMs.",
+                format_gib(self.available_kv_cache_memory_bytes),
+                format_gib(self.requested_memory),
+                format_gib(weights_memory),
+                safety_margin_gb,
+            )
+            return self._reserve_mm_ipc_gpu_memory(
+                int(self.available_kv_cache_memory_bytes)
+            )
+
         # Execute a forward pass with dummy inputs to profile the memory usage
         # of the model.
         with memory_profiling(
@@ -848,16 +884,23 @@ class Worker(WorkerBase):
                 self.scheduler_config.max_num_batched_tokens,
             )
 
-            # We skip EPLB here since we don't want to record dummy metrics
-            hidden_states, last_hidden_states = self.model_runner._dummy_run(
-                num_tokens=max_num_reqs,
-                skip_eplb=True,
-                cudagraph_runtime_mode=CUDAGraphMode.NONE,
-            )
-            if self.model_runner.is_pooling_model:
-                self.model_runner._dummy_pooler_run(hidden_states)
+            if os.environ.get("VLLM_SKIP_FINAL_DUMMY_RUN"):
+                logger.warning(
+                    "Skipping final V1 dummy run because "
+                    "VLLM_SKIP_FINAL_DUMMY_RUN is set. The first real request "
+                    "may pay sampler/logits buffer allocation or JIT cost."
+                )
             else:
-                self.model_runner._dummy_sampler_run(hidden_states=last_hidden_states)
+                # We skip EPLB here since we don't want to record dummy metrics
+                hidden_states, last_hidden_states = self.model_runner._dummy_run(
+                    num_tokens=max_num_reqs,
+                    skip_eplb=True,
+                    cudagraph_runtime_mode=CUDAGraphMode.NONE,
+                )
+                if self.model_runner.is_pooling_model:
+                    self.model_runner._dummy_pooler_run(hidden_states)
+                else:
+                    self.model_runner._dummy_sampler_run(hidden_states=last_hidden_states)
 
         # Reset the seed to ensure that the random state is not affected by
         # the model initialization and profiling.

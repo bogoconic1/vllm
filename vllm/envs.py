@@ -114,6 +114,14 @@ if TYPE_CHECKING:
     VLLM_ALLOW_RUNTIME_LORA_UPDATING: bool = False
     VLLM_SKIP_P2P_CHECK: bool = False
     VLLM_DISABLED_KERNELS: list[str] = []
+    VLLM_DISABLE_CUTEDSL: bool = False
+    VLLM_SKIP_MEMORY_PROFILE_RUN: bool = False
+    VLLM_SKIP_MEMORY_PROFILE_SAFETY_MARGIN_GB: float = 6
+    VLLM_SKIP_FINAL_DUMMY_RUN: bool = False
+    VLLM_MAMBA2_SKIP_SSD_WARMUP: bool = False
+    VLLM_MAMBA2_SKIP_PROFILE_FORWARD: bool = False
+    VLLM_DEEPSEEK_V4_SKIP_SPARSE_MLA_WARMUP: bool = False
+    VLLM_DEEPSEEK_V4_FORCE_TRITON_COMPRESSOR: bool = False
     VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE: bool = True
     VLLM_DISABLE_PYNCCL: bool = False
     VLLM_USE_OINK_OPS: bool = False
@@ -1120,6 +1128,35 @@ environment_variables: dict[str, Callable[[], Any]] = {
         if "VLLM_DISABLED_KERNELS" not in os.environ
         else os.environ["VLLM_DISABLED_KERNELS"].split(",")
     ),
+    "VLLM_DISABLE_CUTEDSL": lambda: os.getenv("VLLM_DISABLE_CUTEDSL", "0").lower()
+    in ("1", "true"),
+    "VLLM_SKIP_MEMORY_PROFILE_RUN": lambda: os.getenv(
+        "VLLM_SKIP_MEMORY_PROFILE_RUN", "0"
+    ).lower()
+    in ("1", "true", "yes"),
+    "VLLM_SKIP_MEMORY_PROFILE_SAFETY_MARGIN_GB": lambda: float(
+        os.getenv("VLLM_SKIP_MEMORY_PROFILE_SAFETY_MARGIN_GB", "6")
+    ),
+    "VLLM_SKIP_FINAL_DUMMY_RUN": lambda: os.getenv(
+        "VLLM_SKIP_FINAL_DUMMY_RUN", "0"
+    ).lower()
+    in ("1", "true", "yes"),
+    "VLLM_MAMBA2_SKIP_SSD_WARMUP": lambda: os.getenv(
+        "VLLM_MAMBA2_SKIP_SSD_WARMUP", "0"
+    ).lower()
+    in ("1", "true", "yes"),
+    "VLLM_MAMBA2_SKIP_PROFILE_FORWARD": lambda: os.getenv(
+        "VLLM_MAMBA2_SKIP_PROFILE_FORWARD", "0"
+    ).lower()
+    in ("1", "true", "yes"),
+    "VLLM_DEEPSEEK_V4_SKIP_SPARSE_MLA_WARMUP": lambda: os.getenv(
+        "VLLM_DEEPSEEK_V4_SKIP_SPARSE_MLA_WARMUP", "0"
+    ).lower()
+    in ("1", "true", "yes"),
+    "VLLM_DEEPSEEK_V4_FORCE_TRITON_COMPRESSOR": lambda: os.getenv(
+        "VLLM_DEEPSEEK_V4_FORCE_TRITON_COMPRESSOR", "0"
+    ).lower()
+    in ("1", "true", "yes"),
     "VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE": lambda: bool(
         int(os.getenv("VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE", "1"))
     ),

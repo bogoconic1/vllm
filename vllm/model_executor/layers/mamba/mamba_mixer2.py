@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 
+import os
+
 import torch
 from torch import nn
 
@@ -575,6 +577,17 @@ class MambaMixer2(MambaBase, PluggableLayer):
         if self._ssd_kernels_warmed_up:
             return
         self._ssd_kernels_warmed_up = True
+        if os.environ.get("VLLM_MAMBA2_SKIP_SSD_WARMUP", "0").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            logger.info_once(
+                "Skipping Mamba2 SSD Triton kernel warmup because "
+                "VLLM_MAMBA2_SKIP_SSD_WARMUP is set. First inference may "
+                "pay the autotune/compile cost."
+            )
+            return
         logger.info_once("Warming up Mamba2 SSD Triton kernels...")
 
         device = projected_states.device
@@ -717,6 +730,17 @@ class MambaMixer2(MambaBase, PluggableLayer):
             num_decode_tokens = attn_metadata.num_decode_tokens
 
         if attn_metadata is None:
+            if os.environ.get("VLLM_MAMBA2_SKIP_PROFILE_FORWARD", "0").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                logger.info_once(
+                    "Skipping Mamba2 no-metadata profile forward because "
+                    "VLLM_MAMBA2_SKIP_PROFILE_FORWARD is set."
+                )
+                output.zero_()
+                return output
             # V1 profile run -- warm up SSD kernels so that autotuning
             # completes before SSM cache allocation.
             self._warmup_ssd_kernels(projected_states)

@@ -4,6 +4,7 @@
 
 from typing import TYPE_CHECKING, cast
 
+import os
 import torch
 
 from vllm.logger import init_logger
@@ -221,6 +222,13 @@ def flashinfer_sparse_mla_decode_autotune_warmup(worker: "Worker") -> None:
 
 def deepseek_v4_sparse_mla_attention_warmup(worker: "Worker") -> None:
     """Warm DSv4 sparse-MLA mixed prefill+decode attention."""
+    if os.environ.get("VLLM_DEEPSEEK_V4_SKIP_SPARSE_MLA_WARMUP"):
+        logger.info(
+            "Skipping DeepSeek V4 sparse MLA attention warmup because "
+            "VLLM_DEEPSEEK_V4_SKIP_SPARSE_MLA_WARMUP is set."
+        )
+        return
+
     runner = worker.model_runner
     if runner.is_pooling_model or not _has_deepseek_v4_sparse_mla_backend(runner):
         return

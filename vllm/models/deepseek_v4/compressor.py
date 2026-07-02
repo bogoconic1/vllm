@@ -4,6 +4,8 @@
 from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 
+import os
+
 import torch
 from torch import nn
 
@@ -353,12 +355,19 @@ class DeepseekCompressor(nn.Module):
         # cutedsl (head=512) accepts the full-cache flags; triton (indexer/AMD)
         # does not, so the two callables have different signatures.
         compress_norm_rope_store_fn: Any
-        if current_platform.is_cuda() and self.head_dim == 512:
+        force_triton_compressor = os.environ.get(
+            "VLLM_DEEPSEEK_V4_FORCE_TRITON_COMPRESSOR"
+        )
+        if (
+            current_platform.is_cuda()
+            and self.head_dim == 512
+            and not force_triton_compressor
+        ):
             from .nvidia.ops.sparse_attn_compress_cutedsl import (
                 compress_norm_rope_store_cutedsl,
             )
 
-            # head=512 on CUDA always uses cutedsl, for both the fp8_ds_mla
+            # head=512 on CUDA uses cutedsl by default, for both the fp8_ds_mla
             # layout and the plain full-cache layout. The full-cache flags
             # are consumed only here.
             compress_norm_rope_store_fn = compress_norm_rope_store_cutedsl
@@ -368,7 +377,13 @@ class DeepseekCompressor(nn.Module):
                 fp8_scale=fp8_scale,
             )
         else:
-            # Indexer path (head_dim == 128) or non-CUDA GPUs (AMD, XPU, etc.).
+            if force_triton_compressor and (store_full_kv or store_full_fp8):
+                raise RuntimeError(
+                    "VLLM_DEEPSEEK_V4_FORCE_TRITON_COMPRESSOR is only safe "
+                    "when full-KV cache storage is not requested."
+                )
+            # Indexer path (head_dim == 128), non-CUDA GPUs, or opt-in CUDA
+            # fallback when cutedsl is unavailable/incompatible.
             compress_norm_rope_store_fn = compress_norm_rope_store_triton
             extra_kwargs = {}
 
